@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Debate Simulator</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #2C2820; color: #E8E0D4; font-family: 'Source Serif 4', Georgia, serif; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: #332F28; }
+  ::-webkit-scrollbar-thumb { background: #564E43; border-radius: 3px; }
+  select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23887766' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px !important; }
+  button { cursor: pointer; }
+  textarea, input { outline: none; }
+  textarea::placeholder, input::placeholder { color: #5A5040; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+/* ─── Persona Card ─── */
+function Card({ r, response, isExpanded, onToggle, index, isLoading }) {
+  return (
+    <div style={{
+      background: r.bg, border: "1px solid " + r.color + "33",
+      borderLeft: "3px solid " + r.color, borderRadius: 8,
+      marginBottom: 12, overflow: "hidden",
+      animation: "fadeIn 0.4s ease-out " + (index * 0.08) + "s both"
+    }}>
+      <div onClick={onToggle} style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 18px", cursor: "pointer", userSelect: "none"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }}>{r.flag}</span>
+          <div>
+            <div style={{ color: r.color, fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 700 }}>{r.name}</div>
+            <div style={{ color: "#8A8A8A", fontSize: 10, fontFamily: "'Space Mono', monospace", letterSpacing: "0.06em" }}>{r.role.toUpperCase()}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isLoading && <span style={{ color: r.color, fontSize: 10, fontFamily: "'Space Mono', monospace", animation: "pulse 1.5s infinite" }}>THINKING...</span>}
+          {response && <span style={{ color: "#4CAF50", fontSize: 12 }}>&#10003;</span>}
+          <span style={{ color: r.color + "88", fontSize: 18, transition: "transform 0.3s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>&#9662;</span>
+        </div>
+      </div>
+      {isExpanded && response && (
+        <div style={{ padding: "0 18px 16px", color: "#D8D0C4", fontSize: 13.5, lineHeight: 1.8, fontFamily: "'Source Serif 4', Georgia, serif", borderTop: "1px solid " + r.color + "15" }}>
+          {response.split("\n\n").map((p, i) => <p key={i} style={{ margin: "12px 0" }}>{p}</p>)}
+        </div>
+      )}
+      {isExpanded && !response && isLoading && (
+        <div style={{ padding: "16px 18px", color: "#6B5F50", fontSize: 13, fontStyle: "italic", borderTop: "1px solid " + r.color + "15" }}>
+          Formulating response...
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Outcome Bar ─── */
+function OutcomeBar({ outcome, userVote, onVote }) {
+  const isVoted = userVote === outcome.id;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => onVote(outcome.id)} style={{
+            width: 18, height: 18, borderRadius: "50%",
+            border: isVoted ? "2px solid #D4AF37" : "1px solid #444",
+            background: isVoted ? "#D4AF37" : "transparent",
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 10, color: isVoted ? "#000" : "transparent", transition: "all 0.2s"
+          }}>{isVoted ? "\u2713" : ""}</button>
+          <span style={{ color: "#E8E0D4", fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 14, fontWeight: 600 }}>{outcome.label}</span>
+        </div>
+        <span style={{ color: "#D4AF37", fontFamily: "'Space Mono', monospace", fontSize: 12 }}>{outcome.prob}%</span>
+      </div>
+      <div style={{ background: "#3D382F", borderRadius: 4, height: 8, overflow: "hidden" }}>
+        <div style={{
+          height: "100%", borderRadius: 4, transition: "width 1s ease-out",
+          width: outcome.prob + "%",
+          background: isVoted ? "linear-gradient(90deg, #D4AF37, #F59E0B)" : "linear-gradient(90deg, #564E43, #5A5040)"
+        }} />
+      </div>
+      <div style={{ color: "#7A6F5F", fontSize: 11, fontFamily: "'Source Serif 4', Georgia, serif", marginTop: 3 }}>{outcome.desc}</div>
+    </div>
+  );
+}
+
+/* ─── Loading Spinner ─── */
+function Spinner({ size = 16, color = "#D4AF37" }) {
+  return <div style={{
+    width: size, height: size, border: `2px solid ${color}33`, borderTopColor: color,
+    borderRadius: "50%", animation: "spin 0.8s linear infinite", display: "inline-block"
+  }} />;
+}
+
+/* ─── Input Screen ─── */
+function InputScreen({ onGenerate }) {
+  const [topic, setTopic] = useState("");
+  const [questions, setQuestions] = useState("");
+  const [numPersonas, setNumPersonas] = useState(5);
+  const [model, setModel] = useState("gpt-5.4-mini");
+  const [models, setModels] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/models").then(r => r.json()).then(data => {
+      setModels(data.models);
+      setModel(data.default);
+    });
+  }, []);
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ maxWidth: 640, width: "100%", animation: "fadeIn 0.5s ease-out" }}>
+        <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#5A5040", letterSpacing: "0.2em", marginBottom: 8 }}>
+          AI-POWERED DEBATE SIMULATOR
+        </div>
+        <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 32, fontWeight: 900, color: "#E8E0D4", marginBottom: 8 }}>
+          Debate Simulator
+        </h1>
+        <p style={{ color: "#7A6F5F", fontSize: 14, marginBottom: 32, fontStyle: "italic" }}>
+          Inject a scenario. AI personas will debate it from multiple angles, synthesize findings, and let you vote on outcomes.
+        </p>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ color: "#998A78", fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.1em", display: "block", marginBottom: 8 }}>
+            SCENARIO / TOPIC *
+          </label>
+          <textarea
+            value={topic}
+            onChange={e => setTopic(e.target.value)}
+            placeholder="e.g. Impact of a US-China semiconductor embargo on Southeast Asian tech companies over the next 12 months"
+            rows={4}
+            style={{
+              width: "100%", padding: "14px 16px", borderRadius: 8,
+              background: "#36312A", border: "1px solid #4D463B", color: "#E8E0D4",
+              fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 14, lineHeight: 1.6, resize: "vertical"
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ color: "#998A78", fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.1em", display: "block", marginBottom: 8 }}>
+            GUIDING QUESTIONS (OPTIONAL, ONE PER LINE)
+          </label>
+          <textarea
+            value={questions}
+            onChange={e => setQuestions(e.target.value)}
+            placeholder={"Which sectors are most vulnerable?\nWhat are the second-order effects?\nHistorical parallels?"}
+            rows={3}
+            style={{
+              width: "100%", padding: "14px 16px", borderRadius: 8,
+              background: "#36312A", border: "1px solid #4D463B", color: "#E8E0D4",
+              fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 13, lineHeight: 1.6, resize: "vertical"
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 20, marginBottom: 32 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: "#998A78", fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.1em", display: "block", marginBottom: 8 }}>
+              PANELISTS: {numPersonas}
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ color: "#665", fontSize: 12 }}>3</span>
+              <input
+                type="range" min={3} max={10} value={numPersonas}
+                onChange={e => setNumPersonas(parseInt(e.target.value))}
+                style={{ flex: 1, accentColor: "#D4AF37" }}
+              />
+              <span style={{ color: "#665", fontSize: 12 }}>10</span>
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: "#998A78", fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.1em", display: "block", marginBottom: 8 }}>
+              MODEL
+            </label>
+            <select
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              style={{
+                width: "100%", padding: "10px 16px", borderRadius: 8,
+                background: "#36312A", border: "1px solid #4D463B", color: "#E8E0D4",
+                fontFamily: "'Space Mono', monospace", fontSize: 12, cursor: "pointer"
+              }}
+            >
+              {models.map(m => <option key={m} value={m} style={{ background: "#36312A" }}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <button
+          onClick={() => topic.trim() && onGenerate({ topic: topic.trim(), guiding_questions: questions, num_personas: numPersonas, model })}
+          disabled={!topic.trim()}
+          style={{
+            width: "100%", padding: "16px 24px", borderRadius: 8,
+            border: topic.trim() ? "1px solid #D4AF37" : "1px solid #564E43",
+            background: topic.trim() ? "linear-gradient(135deg, #D4AF3722, #F59E0B11)" : "#36312A",
+            color: topic.trim() ? "#D4AF37" : "#444",
+            fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700,
+            letterSpacing: "0.1em", transition: "all 0.3s"
+          }}
+        >
+          GENERATE DEBATE &#8594;
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main App ─── */
+function App() {
+  const [stage, setStage] = useState("input"); // input | loading | ready
+  const [loadingMsg, setLoadingMsg] = useState("");
+  const [topic, setTopic] = useState("");
+  const [personas, setPersonas] = useState([]);
+  const [responses, setResponses] = useState({});
+  const [synthesis, setSynthesis] = useState(null);
+  const [outcomes, setOutcomes] = useState([]);
+  const [activeTab, setActiveTab] = useState("debate");
+  const [expanded, setExpanded] = useState(new Set());
+  const [expandAll, setExpandAll] = useState(false);
+  const [userVote, setUserVote] = useState(null);
+  const [voteCommentary, setVoteCommentary] = useState(null);
+  const [voteLoading, setVoteLoading] = useState(false);
+  const [qaInput, setQaInput] = useState("");
+  const [qaHistory, setQaHistory] = useState([]);
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaExpanded, setQaExpanded] = useState(new Set());
+  const [selectedModel, setSelectedModel] = useState("gpt-5.4-mini");
+  const [usage, setUsage] = useState(null); // {input_tokens, output_tokens, cost, calls, model}
+  const debateDataRef = useRef({});
+
+  const toggle = (id) => setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => {
+    if (expandAll) setExpanded(new Set());
+    else setExpanded(new Set(personas.map(p => p.id)));
+    setExpandAll(!expandAll);
+  };
+
+  const handleGenerate = async (params) => {
+    setStage("loading");
+    setTopic(params.topic);
+    setSelectedModel(params.model || "gpt-5.4-mini");
+    setLoadingMsg("Assembling expert panel...");
+    setPersonas([]);
+    setResponses({});
+    setSynthesis(null);
+    setOutcomes([]);
+    setUserVote(null);
+    setVoteCommentary(null);
+    setQaHistory([]);
+    setActiveTab("debate");
+    setUsage(null);
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params)
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        let eventType = null;
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ") && eventType) {
+            const data = JSON.parse(line.slice(6));
+            switch (eventType) {
+              case "status":
+                setLoadingMsg(data.message);
+                break;
+              case "personas":
+                setPersonas(data.personas);
+                if (data.personas.length > 0) {
+                  setExpanded(new Set([data.personas[0].id]));
+                }
+                break;
+              case "debate":
+                setResponses(prev => ({ ...prev, [data.persona_id]: data.text }));
+                break;
+              case "synthesis":
+                setSynthesis(data);
+                break;
+              case "outcomes":
+                setOutcomes(data.outcomes);
+                break;
+              case "usage":
+                setUsage(data);
+                break;
+              case "done":
+                setStage("ready");
+                break;
+            }
+            eventType = null;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Generation error:", err);
+      setLoadingMsg("Error: " + err.message);
+    }
+  };
+
+  const handleVote = async (outcomeId) => {
+    setUserVote(outcomeId);
+    setVoteCommentary(null);
+    setVoteLoading(true);
+    const outcome = outcomes.find(o => o.id === outcomeId);
+    try {
+      const res = await fetch("/api/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          outcome,
+          topic,
+          model: selectedModel,
+          personas_summary: personas.map(p => `${p.name} (${p.role}): ${p.perspective_brief}`).join("\n"),
+          synthesis_summary: synthesis ? synthesis.likely_scenario : ""
+        })
+      });
+      const data = await res.json();
+      setVoteCommentary(data.commentary);
+      if (data.usage) setUsage(prev => prev ? ({...prev, input_tokens: prev.input_tokens + data.usage.input_tokens, output_tokens: prev.output_tokens + data.usage.output_tokens, cost: prev.cost + data.usage.cost, calls: prev.calls + 1}) : data.usage);
+    } catch (err) {
+      setVoteCommentary("Error generating commentary.");
+    }
+    setVoteLoading(false);
+  };
+
+  const handleQa = async () => {
+    if (!qaInput.trim() || qaLoading) return;
+    const question = qaInput.trim();
+    setQaInput("");
+    setQaLoading(true);
+    try {
+      const res = await fetch("/api/qa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, topic, personas, synthesis, model: selectedModel })
+      });
+      const data = await res.json();
+      const newIdx = qaHistory.length;
+      if (data.usage) setUsage(prev => prev ? ({...prev, input_tokens: prev.input_tokens + data.usage.input_tokens, output_tokens: prev.output_tokens + data.usage.output_tokens, cost: prev.cost + data.usage.cost, calls: prev.calls + 1}) : data.usage);
+      setQaHistory(prev => [...prev, { question, ...data }]);
+      setQaExpanded(prev => new Set([...prev, newIdx]));
+    } catch (err) {
+      setQaHistory(prev => [...prev, { question, panel_views: [], verdict: "Error generating response." }]);
+    }
+    setQaLoading(false);
+  };
+
+  const respondedIds = new Set(Object.keys(responses));
+  const debateReady = personas.length > 0;
+  const synthesisReady = synthesis !== null;
+  const outcomesReady = outcomes.length > 0;
+
+  const tabs = [
+    { id: "debate", label: "Debate", ready: debateReady },
+    { id: "synthesis", label: "Synthesis", ready: synthesisReady },
+    { id: "outcomes", label: "Outcomes & Vote", ready: outcomesReady },
+    { id: "qa", label: "Q&A", ready: synthesisReady }
+  ];
+
+  if (stage === "input") return <InputScreen onGenerate={handleGenerate} />;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#2C2820", color: "#E8E0D4", fontFamily: "'Source Serif 4', Georgia, serif" }}>
+      {/* Header */}
+      <header style={{ borderBottom: "1px solid #3E3930", padding: "20px 24px", background: "linear-gradient(180deg, #36312A 0%, #2C2820 100%)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#5A5040", letterSpacing: "0.2em", marginBottom: 5 }}>
+              AI DEBATE SIMULATOR // MULTI-PERSPECTIVE ANALYSIS
+            </div>
+            <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 900, color: "#E8E0D4", margin: 0, maxWidth: 700 }}>
+              {topic}
+            </h1>
+            {personas.length > 0 && (
+              <div style={{ fontSize: 13, color: "#7A6F5F", marginTop: 4, fontStyle: "italic" }}>
+                {personas.length} panelists debating from diverse perspectives
+              </div>
+            )}
+          </div>
+          <button onClick={() => { setStage("input"); }} style={{
+            padding: "8px 16px", borderRadius: 6, border: "1px solid #4D463B",
+            background: "#3A352D", color: "#998A78", fontFamily: "'Space Mono', monospace", fontSize: 10,
+            letterSpacing: "0.05em", flexShrink: 0
+          }}>NEW DEBATE</button>
+        </div>
+      </header>
+
+      {/* Loading banner */}
+      {stage === "loading" && (
+        <div style={{ padding: "12px 24px", background: "#3A352D", borderBottom: "1px solid #3E3930", display: "flex", alignItems: "center", gap: 10 }}>
+          <Spinner size={14} />
+          <span style={{ color: "#D4AF37", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>{loadingMsg}</span>
+        </div>
+      )}
+
+      {/* Cost bar */}
+      {usage && (
+        <div style={{
+          padding: "8px 24px", background: "#332F26", borderBottom: "1px solid #3E3930",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#6B5F50"
+        }}>
+          <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+            <span>MODEL: <span style={{ color: "#998A78" }}>{usage.model}</span></span>
+            <span>CALLS: <span style={{ color: "#998A78" }}>{usage.calls}</span></span>
+            <span>INPUT: <span style={{ color: "#998A78" }}>{usage.input_tokens.toLocaleString()}</span> tkns</span>
+            <span>OUTPUT: <span style={{ color: "#998A78" }}>{usage.output_tokens.toLocaleString()}</span> tkns</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>EST. COST:</span>
+            <span style={{ color: "#D4AF37", fontSize: 12, fontWeight: 700 }}>${usage.cost.toFixed(4)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #3E3930", background: "#302B24" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => t.ready && setActiveTab(t.id)} style={{
+            padding: "12px 24px", border: "none",
+            background: activeTab === t.id ? "#3A352D" : "transparent",
+            color: !t.ready ? "#564E43" : activeTab === t.id ? "#D4AF37" : "#5A5040",
+            fontFamily: "'Space Mono', monospace", fontSize: 11, letterSpacing: "0.08em",
+            borderBottom: activeTab === t.id ? "2px solid #D4AF37" : "2px solid transparent",
+            transition: "all 0.2s",
+            cursor: t.ready ? "pointer" : "default",
+            opacity: t.ready ? 1 : 0.4
+          }}>{t.label.toUpperCase()}</button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: "20px 24px", maxHeight: "calc(100vh - 180px)", overflowY: "auto" }}>
+
+        {/* ─── DEBATE TAB ─── */}
+        {activeTab === "debate" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#5A5040", letterSpacing: "0.15em" }}>
+                {respondedIds.size} / {personas.length} PANELISTS RESPONDED — CLICK TO EXPAND/COLLAPSE
+              </div>
+              {personas.length > 0 && (
+                <button onClick={toggleAll} style={{
+                  padding: "5px 12px", borderRadius: 4, border: "1px solid #4D463B",
+                  background: "#3A352D", color: "#998A78", fontFamily: "'Space Mono', monospace", fontSize: 10
+                }}>{expandAll ? "COLLAPSE ALL" : "EXPAND ALL"}</button>
+              )}
+            </div>
+            {personas.map((r, i) => (
+              <Card key={r.id} r={r} index={i}
+                response={responses[r.id]}
+                isLoading={!responses[r.id] && stage === "loading"}
+                isExpanded={expanded.has(r.id)}
+                onToggle={() => toggle(r.id)} />
+            ))}
+          </div>
+        )}
+
+        {/* ─── SYNTHESIS TAB ─── */}
+        {activeTab === "synthesis" && synthesis && (
+          <div style={{ animation: "fadeIn 0.4s ease-out" }}>
+            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#5A5040", letterSpacing: "0.15em", marginBottom: 20 }}>CROSS-PANEL SYNTHESIS</div>
+
+            <div style={{ background: "#33362C", border: "1px solid #4CAF5033", borderLeft: "3px solid #4CAF50", borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ color: "#4CAF50", fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Consensus Points</div>
+              {synthesis.consensus.map((c, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, animation: "slideIn 0.3s ease-out " + (i * 0.1) + "s both" }}>
+                  <span style={{ color: "#4CAF50", fontSize: 14, marginTop: 1, flexShrink: 0 }}>&#9656;</span>
+                  <span style={{ color: "#C8BFA8", fontSize: 13.5, lineHeight: 1.7 }}>{c}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "#38302A", border: "1px solid #EF444433", borderLeft: "3px solid #EF4444", borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ color: "#EF4444", fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Key Disagreements</div>
+              {synthesis.disagreements.map((d, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, animation: "slideIn 0.3s ease-out " + (i * 0.1 + 0.3) + "s both" }}>
+                  <span style={{ color: "#EF4444", fontSize: 14, marginTop: 1, flexShrink: 0 }}>&#9889;</span>
+                  <span style={{ color: "#C8BFA8", fontSize: 13.5, lineHeight: 1.7 }}>{d}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "#37332B", border: "1px solid #D4AF3733", borderLeft: "3px solid #D4AF37", borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ color: "#D4AF37", fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Most Likely Scenario</div>
+              <p style={{ color: "#C8BFA8", fontSize: 13.5, lineHeight: 1.8, margin: 0 }}>{synthesis.likely_scenario}</p>
+            </div>
+
+            <div style={{ background: "#382F28", border: "1px solid #FF634733", borderLeft: "3px solid #FF6347", borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ color: "#FF6347", fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Wildcard Risk</div>
+              <p style={{ color: "#C8BFA8", fontSize: 13.5, lineHeight: 1.8, margin: 0 }}>{synthesis.wildcard}</p>
+            </div>
+
+            <div style={{ background: "#37342A", border: "1px solid #F59E0B33", borderLeft: "3px solid #F59E0B", borderRadius: 8, padding: "16px 20px" }}>
+              <div style={{ color: "#F59E0B", fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Historical Context</div>
+              <p style={{ color: "#C8BFA8", fontSize: 13.5, lineHeight: 1.8, margin: 0, fontStyle: "italic" }}>{synthesis.historical_verdict}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ─── OUTCOMES TAB ─── */}
+        {activeTab === "outcomes" && outcomesReady && (
+          <div style={{ animation: "fadeIn 0.4s ease-out" }}>
+            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#5A5040", letterSpacing: "0.15em", marginBottom: 6 }}>SCENARIO PROBABILITIES — VOTE ON YOUR VIEW</div>
+            <div style={{ color: "#7A6F5F", fontSize: 12, marginBottom: 20, fontStyle: "italic" }}>Click a circle to cast your vote — implications will be generated based on the debate context</div>
+
+            <div style={{ background: "#36312A", border: "1px solid #433D34", borderRadius: 10, padding: "20px 24px", marginBottom: 20 }}>
+              {outcomes.map(o => (
+                <OutcomeBar key={o.id} outcome={o} userVote={userVote} onVote={handleVote} />
+              ))}
+            </div>
+
+            {(voteLoading || voteCommentary) && (
+              <div style={{
+                background: "#37342A", border: "1px solid #D4AF3733", borderRadius: 8,
+                padding: "16px 20px", marginBottom: 20, animation: "fadeIn 0.3s ease-out"
+              }}>
+                <div style={{ color: "#D4AF37", fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  Implications: {outcomes.find(o => o.id === userVote)?.label}
+                  {voteLoading && <Spinner size={12} />}
+                </div>
+                {voteCommentary && (
+                  <div style={{ color: "#B8AE9A", fontSize: 13, lineHeight: 1.8 }}>{voteCommentary}</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Q&A TAB ─── */}
+        {activeTab === "qa" && (
+          <div style={{ animation: "fadeIn 0.4s ease-out" }}>
+            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#5A5040", letterSpacing: "0.15em", marginBottom: 6 }}>
+              ASK THE PANEL — QUESTIONS ANSWERED THROUGH MULTI-EXPERT LENS
+            </div>
+            <div style={{ color: "#7A6F5F", fontSize: 12, marginBottom: 20, fontStyle: "italic" }}>
+              Type a question below — the panel will respond from their diverse perspectives
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+              <input
+                value={qaInput}
+                onChange={e => setQaInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleQa(); }}
+                placeholder="e.g. 'What are the biggest risks in the next 3 months?'"
+                style={{
+                  flex: 1, padding: "12px 16px", borderRadius: 8,
+                  background: "#36312A", border: "1px solid #4D463B",
+                  color: "#E8E0D4", fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 13
+                }}
+              />
+              <button
+                onClick={handleQa}
+                disabled={qaLoading || !qaInput.trim()}
+                style={{
+                  padding: "12px 20px", borderRadius: 8, border: "1px solid #D4AF3766",
+                  background: "#D4AF3722", color: "#D4AF37",
+                  fontFamily: "'Space Mono', monospace", fontSize: 11, fontWeight: 700,
+                  letterSpacing: "0.05em", whiteSpace: "nowrap",
+                  opacity: (qaLoading || !qaInput.trim()) ? 0.5 : 1, display: "flex", alignItems: "center", gap: 8
+                }}
+              >
+                {qaLoading ? <><Spinner size={12} /> ASKING...</> : "ASK PANEL \u2192"}
+              </button>
+            </div>
+
+            {qaHistory.map((qa, qi) => (
+              <div key={qi} style={{
+                background: "#36312A", border: "1px solid #433D34", borderRadius: 10,
+                marginBottom: 20, overflow: "hidden", animation: "fadeIn 0.4s ease-out"
+              }}>
+                <div
+                  onClick={() => setQaExpanded(prev => { const n = new Set(prev); n.has(qi) ? n.delete(qi) : n.add(qi); return n; })}
+                  style={{
+                    padding: "16px 20px", cursor: "pointer", userSelect: "none",
+                    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                    background: "#3A352D"
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 10, flex: 1 }}>
+                    <span style={{ color: "#D4AF37", fontSize: 16, marginTop: 1, flexShrink: 0 }}>Q</span>
+                    <span style={{ color: "#E8E0D4", fontSize: 14, fontWeight: 600, lineHeight: 1.5 }}>{qa.question}</span>
+                  </div>
+                  <span style={{ color: "#5A504055588", fontSize: 18, transition: "transform 0.3s", transform: qaExpanded.has(qi) ? "rotate(180deg)" : "rotate(0deg)", marginLeft: 12, flexShrink: 0 }}>&#9662;</span>
+                </div>
+
+                {qaExpanded.has(qi) && (
+                  <div style={{ padding: "0 20px 20px" }}>
+                    <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: "#5A5040", letterSpacing: "0.15em", margin: "16px 0 12px", paddingBottom: 8, borderBottom: "1px solid #3E3930" }}>
+                      PANEL VIEWS
+                    </div>
+                    {qa.panel_views.map((p, pi) => {
+                      const viewColors = { bullish: "#4CAF50", optimistic: "#4CAF50", hold: "#4CAF50", cautious: "#F59E0B", bearish: "#EF4444", "risk-flag": "#EF4444", neutral: "#60A5FA" };
+                      const vc = viewColors[p.view] || "#60A5FA";
+                      return (
+                        <div key={pi} style={{
+                          display: "flex", gap: 12, marginBottom: 14,
+                          animation: "slideIn 0.3s ease-out " + (pi * 0.08) + "s both"
+                        }}>
+                          <div style={{ flexShrink: 0, textAlign: "center", width: 50 }}>
+                            <div style={{ fontSize: 18 }}>{p.flag}</div>
+                            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, color: p.color, marginTop: 2 }}>{p.name}</div>
+                            <div style={{
+                              fontSize: 8, fontFamily: "'Space Mono', monospace", marginTop: 3,
+                              padding: "2px 6px", borderRadius: 3, display: "inline-block",
+                              background: vc + "22", color: vc, border: "1px solid " + vc + "44"
+                            }}>{p.view.toUpperCase()}</div>
+                          </div>
+                          <div style={{ color: "#B8AE9A", fontSize: 13, lineHeight: 1.7 }}>{p.text}</div>
+                        </div>
+                      );
+                    })}
+
+                    <div style={{
+                      background: "#37342A", border: "1px solid #D4AF3733", borderLeft: "3px solid #D4AF37",
+                      borderRadius: 8, padding: "14px 18px", marginTop: 16
+                    }}>
+                      <div style={{ color: "#D4AF37", fontFamily: "'Playfair Display', serif", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+                        Panel Verdict
+                      </div>
+                      <div style={{ color: "#C8BFA8", fontSize: 13, lineHeight: 1.8 }}>{qa.verdict}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {qaHistory.length === 0 && !qaLoading && (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#564E43", fontFamily: "'Space Mono', monospace", fontSize: 11, letterSpacing: "0.1em" }}>
+                ASK A QUESTION TO GET MULTI-PERSPECTIVE ANSWERS FROM THE PANEL
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
